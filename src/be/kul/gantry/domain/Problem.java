@@ -390,19 +390,32 @@ public class Problem {
                 //De verplaatsingen nodig om de outputjob te vervolledigen en alle sloten updaten met hun huidige items
                 itemMovements.addAll(GeneralMeasures.createMoves(pickupPlaceDuration, gantries.get(0), slot, outputJob.getPlace().getSlot()));
                 update(Operatie.VerplaatsNaarOutput, outputJob.getPlace().getSlot(),slot);
+
             }
             else {
                 //AANGEPAST
                 //een nieuw inputjob doen tot het item gevonden is
                 //origineel ontwerp: plaatste het gewenste output item eerst in de storage
                 // om direct daarna hem terug op te nemen voor naar de output te brengen?
-                while(slot == null) {
-                    Job inputJob = inputJobSequence.get(inputJobCounter++);
+                // dit beweegt direct van input slot naar output slot
+               while(slot == null) {
+                    Job inputJob = inputJobSequence.get(inputJobCounter);
+
                     if (inputJob.getItem().getId() != item.getId()) {
                         arrangeInputJob(inputJob, itemMovements);
                     } else {
                         slot = inputJob.getPickup().getSlot();
+                        Slot outputSlot = outputJob.getPlace().getSlot();
+                        itemMovements.addAll(GeneralMeasures.createMoves(pickupPlaceDuration,gantries.get(0), slot, outputSlot));
+                        update(Operatie.VerplaatsNaarBinnen, outputSlot, slot);
+
                     }
+
+                    inputJobCounter++;
+                    //ook input item op input slot zetten, anders kan niet rechtstreeks van inputslot naar outputslot
+                    // bewegen (als output item net aan begin van input staat)
+                    if(inputJobCounter < inputJobSequence.size())
+                        inputJobSequence.get(inputJobCounter).getPickup().getSlot().setItem(inputJobSequence.get(inputJobCounter).getItem());
                 }
             }
         }
@@ -411,6 +424,12 @@ public class Problem {
         while( inputJobCounter < inputJobSequence.size()){
             arrangeInputJob(inputJobSequence.get(inputJobCounter), itemMovements);
             inputJobCounter++;
+
+            //ook input item op input slot zetten, anders kan niet rechtstreeks van inputslot naar outputslot
+            // bewegen (als output item net aan begin van input staat)
+            if(inputJobCounter < inputJobSequence.size())
+                inputJobSequence.get(inputJobCounter).getPickup().getSlot().setItem(inputJobSequence.get(inputJobCounter).getItem());
+
         }
         return itemMovements;
     }
@@ -476,9 +495,6 @@ public class Problem {
         do { //TODO: als storage vol zit en NaarVoor en NaarAchter vinden geen vrije plaats => inf loop
             // bij het NaarAchter lopen uw index telkens het negatieve deel nemen, dus deze wordt telkens groter negatief.
             //AANPASSING
-            /*if (richting == Richting.NaarAchter) { //dit heeft op eerste zicht probleem bij negatieve sloten denk ik?? offset zou cte wisselen tussen pos en neg
-                offset = -offset;
-            }*/
             Integer locatie = richting==Richting.NaarVoor? (slot.getCenterY() / 10) + offset : (slot.getCenterY() / 10) - offset;
             //we overlopen eerst alle richtingen NaarVoor wanneer deze op zen einde komt en er geen plaats meer is van richting veranderen naar achter
             // index terug op 1 zetten omdat de indexen ervoor al gecontroleerd waren
