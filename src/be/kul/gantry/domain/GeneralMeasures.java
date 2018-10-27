@@ -7,30 +7,27 @@ import java.util.Set;
 
 public abstract class GeneralMeasures {
 
-    public static Slot ZoekLeegSlot(Set<Slot> toCheck){
-
-
+    public static Slot zoekLeegSlot(Set<Slot> toCheck){
         //in een rij een slot zoeken we beginnen zo laag mogelijk
         Set<Slot> parents = new HashSet<>();
         for(Slot s: toCheck){
             if (s.getItem() == null){
                 return s;
-            }else if(s.getParent() != null)
-            {
+            }
+            else if(s.getParent() != null) {
                 parents.add(s.getParent());
             }
         }
-        return ZoekLeegSlot(parents);
+        return zoekLeegSlot(parents);
     }
 
     //Bereken welke hoogte elke rij heeft
     //Recursief alle Parents checken van slots waar iets inzit, omgekeerd is niet nodig want er kan niet iets op niets staan
     public static int hoogteBezetting(Set<Slot> toCheck){
-
         Set<Slot> parents = new HashSet<>();
-        for(Slot s: toCheck){
 
-            if(s != null ){
+        for(Slot s: toCheck){
+            if(s != null){
                 parents.add(s.getParent());
             }
             else{

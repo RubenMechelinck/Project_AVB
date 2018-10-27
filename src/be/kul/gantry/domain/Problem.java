@@ -1,7 +1,5 @@
 package be.kul.gantry.domain;
 
-
-
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.json.simple.JSONArray;
@@ -34,9 +32,9 @@ public class Problem {
 
     private List<Integer> heightList;
     //We maken een 2D Array aan voor alle bodem slots (z=0)
-    HashMap<Integer, HashMap<Integer, Slot>> grondSlots = new HashMap<>();
+    private HashMap<Integer, HashMap<Integer, Slot>> grondSlots = new HashMap<>();
     //We vullen de array met nieuwe arrays
-    HashMap<Integer, Slot> Map = new HashMap<>();
+    private HashMap<Integer, Slot> itemSlotLocation = new HashMap<>();
 
     public enum Richting {
         NaarVoor,
@@ -113,12 +111,12 @@ public class Problem {
         return pickupPlaceDuration;
     }
 
-    public HashMap<Integer, Slot> getMap() {
-        return Map;
+    public HashMap<Integer, Slot> getItemSlotLocation() {
+        return itemSlotLocation;
     }
 
-    public void setMap(HashMap<Integer, Slot> map) {
-        this.Map = map;
+    public void setItemSlotLocation(HashMap<Integer, Slot> itemSlotLocation) {
+        this.itemSlotLocation = itemSlotLocation;
     }
 
     public void writeJsonFile(File file) throws IOException {
@@ -325,13 +323,13 @@ public class Problem {
     }
 
     // hier wordt de parent child link gemaakt dus alle grondsloten met hun ouders dus setparent en setchild van ieder slot
-    public void MakeParentChildLink() {
+    // maak links van alle sloten die al in storage staan
+    private void MakeParentChildLink() {
 
         //Hier wordt de hoogte van elke rij opgeslagen
         heightList = new ArrayList<>();
 
-        for (Slot slot : slots) {
-
+        for(Slot slot: slots) {
             int slotCenterY = slot.getCenterY() / 10;
             int slotCenterX = slot.getCenterX() / 10;
 
@@ -346,7 +344,6 @@ public class Problem {
 
                 }
             } else {
-
                 Slot child = grondSlots.get(slotCenterY).get(slotCenterX);
                 // we stijgen telkens tot op de hoogste z
                 for (int i = 1; i < slot.getZ(); i++) {
@@ -357,8 +354,9 @@ public class Problem {
                 child.setParent(slot);
             }
 
-            //Wanneer het slot gevuld is in een hasmap steken
-            if (slot.getItem() != null) Map.put(slot.getItem().getId(), slot);
+            //Wanneer het slot gevuld is in een hashmap steken
+            if (slot.getItem() != null)
+                itemSlotLocation.put(slot.getItem().getId(), slot);
         }
 
         for(HashMap<Integer, Slot> row : grondSlots.values()){
@@ -368,64 +366,62 @@ public class Problem {
 
     // Eerst proberen we outputjobs uit te voeren tot deze bepaalde items nodig heeft die nog niet in het veld staan,
     // dan schakelen we over op inputjobs tot dat item voor de outputjob gevonden is
-    public List<ItemMovement> werkUit()
-    {
+    public List<ItemMovement> werkUit() {
         MakeParentChildLink();
 
         List<ItemMovement> itemMovements = new ArrayList<>();
-        int inputJobCounter=0,outputJobCounter=0;
+        int inputJobCounter = 0;
+        int outputJobCounter = 0;
 
         //We beginnen met het uitvoeren van de outputjobs
-        while(outputJobCounter<outputJobSequence.size()) {
-            Job outputJob = outputJobSequence.get(outputJobCounter);
+        while(outputJobCounter < outputJobSequence.size()) {
+            Job outputJob = outputJobSequence.get(outputJobCounter++);
 
             Item item = outputJob.getItem();
-            Slot slot = Map.get(item.getId());
+            Slot slot = itemSlotLocation.get(item.getId());
 
             //kijken of het in field zit.
             if(slot != null) {
-
-                //Als het item dat we nodig heeft containers op hem heeft staan eerste deze uitgraven en nieuwe plaats geven
+                //Als het item dat we nodig hebben containers op hem heeft staan eerste deze uitgraven en nieuwe plaats geven
                 if(slot.getParent() != null && slot.getParent().getItem() != null){
                     itemMovements.addAll(uitGraven(slot.getParent(), gantries.get(0)));
                 }
 
                 //De verplaatsingen nodig om de outputjob te vervolledigen en alle sloten updaten met hun huidige items
-                itemMovements.addAll(GeneralMeasures.createMoves(pickupPlaceDuration,gantries.get(0), slot, outputJob.getPlace().getSlot()));
-                update( Operatie.VerplaatsNaarOutput, outputJob.getPlace().getSlot(),slot);
-
-                outputJobCounter++;
-
-            }else {
+                itemMovements.addAll(GeneralMeasures.createMoves(pickupPlaceDuration, gantries.get(0), slot, outputJob.getPlace().getSlot()));
+                update(Operatie.VerplaatsNaarOutput, outputJob.getPlace().getSlot(),slot);
+            }
+            else {
+                //AANGEPAST
                 //een nieuw inputjob doen tot het item gevonden is
-                while(slot == null){
-
-                    arrangeInputJob(inputJobCounter,itemMovements);
-                    inputJobCounter++;
-
-                    //Opnieuw zoeken voor het Slot van de outputjob
-                    slot = Map.get(outputJob.getItem().getId());
+                //origineel ontwerp: plaatste het gewenste output item eerst in de storage
+                // om direct daarna hem terug op te nemen voor naar de output te brengen?
+                while(slot == null) {
+                    Job inputJob = inputJobSequence.get(inputJobCounter++);
+                    if (inputJob.getItem().getId() != item.getId()) {
+                        arrangeInputJob(inputJob, itemMovements);
+                    } else {
+                        slot = inputJob.getPickup().getSlot();
+                    }
                 }
             }
         }
 
         //eventueele overblijvende inputjobs uitvoeren
-        while( inputJobCounter < inputJobSequence.size())
-        {
-            arrangeInputJob(inputJobCounter,itemMovements);
+        while( inputJobCounter < inputJobSequence.size()){
+            arrangeInputJob(inputJobSequence.get(inputJobCounter), itemMovements);
             inputJobCounter++;
         }
         return itemMovements;
     }
 
-    //inputjob afwerken
-    public void arrangeInputJob(int inputJobCounter, List<ItemMovement> itemMovements)
-    {
-        Job inputJob = inputJobSequence.get(inputJobCounter);
+    //inputjob uitvoeren
+    //mss veiliger om Job mee te geven ipv jobcounter zodat counter niet per ongelijk in methode kan veranderd worden
+    private void arrangeInputJob(Job inputJob, List<ItemMovement> itemMovements) {
 
         //overige inputjobs afwerken
         int row = heightList.indexOf(Collections.max(heightList));
-        Slot destination = GeneralMeasures.ZoekLeegSlot(new HashSet<>(grondSlots.get(row).values()));
+        Slot destination = GeneralMeasures.zoekLeegSlot(new HashSet<>(grondSlots.get(row).values()));
 
         //De verplaatsingen nodig om de outputjob te vervolledigen en alle sloten updaten met hun huidige items
         inputJob.getPickup().getSlot().setItem(inputJob.getItem());
@@ -433,7 +429,7 @@ public class Problem {
         update(Operatie.VerplaatsNaarBinnen, destination,inputJob.getPickup().getSlot());
     }
 
-    public void update(Operatie operatie , Slot destination, Slot startSlot){
+    private void update(Operatie operatie, Slot destination, Slot startSlot){
         //Items in slots worden aangepast en de hoogte van de rij(en) worden aangepast;
 
         int fromCenter = startSlot.getCenterY()/10;
@@ -441,30 +437,29 @@ public class Problem {
 
         switch (operatie) {
             case VerplaatsNaarOutput:
-                Map.remove(startSlot.getItem().getId());
+                itemSlotLocation.remove(startSlot.getItem().getId());
                 startSlot.setItem(null);
                 heightList.set(fromCenter, GeneralMeasures.hoogteBezetting(new HashSet<>(grondSlots.get(fromCenter).values())));
                 break;
             case VerplaatsIntern:
                 destination.setItem(startSlot.getItem());
                 startSlot.setItem(null);
-                Map.put(destination.getItem().getId(), destination);
+                itemSlotLocation.put(destination.getItem().getId(), destination);
 
                 heightList.set(fromCenter, GeneralMeasures.hoogteBezetting(new HashSet<>(grondSlots.get(fromCenter).values())));
                 heightList.set(toCenter, GeneralMeasures.hoogteBezetting(new HashSet<>(grondSlots.get(toCenter).values())));
                 break;
             case VerplaatsNaarBinnen:
                 destination.setItem(startSlot.getItem());
-                startSlot.setItem(null);
-                Map.put(destination.getItem().getId(), destination);
+                startSlot.setItem(null); //niet nodig??
+                itemSlotLocation.put(destination.getItem().getId(), destination);
                 heightList.set(toCenter, GeneralMeasures.hoogteBezetting(new HashSet<>(grondSlots.get(toCenter).values())));
                 break;
-
         }
     }
 
     //Deze functie graaft een bepaald slot dat we nodig hebben uit en verplaatst al de bovenliggende sloten.
-    public List<ItemMovement> uitGraven(Slot slot, Gantry gantry){
+    private List<ItemMovement> uitGraven(Slot slot, Gantry gantry){
 
         List<ItemMovement> itemMovements = new ArrayList<>();
         Richting richting = Richting.NaarVoor;
@@ -475,35 +470,34 @@ public class Problem {
         }
 
         //Slot in een zo dicht mogelijke rij zoeken
-        Boolean newSlotFound = false;
+        boolean newSlotFound = false;
         Slot newSlot = null;
-        int index = 1;
-        do {
-
+        int offset = 1;
+        do { //TODO: als storage vol zit en NaarVoor en NaarAchter vinden geen vrije plaats => inf loop
             // bij het NaarAchter lopen uw index telkens het negatieve deel nemen, dus deze wordt telkens groter negatief.
-            if (richting == Richting.NaarAchter) {
-                index = -index;
-            }
+            //AANPASSING
+            /*if (richting == Richting.NaarAchter) { //dit heeft op eerste zicht probleem bij negatieve sloten denk ik?? offset zou cte wisselen tussen pos en neg
+                offset = -offset;
+            }*/
+            Integer locatie = richting==Richting.NaarVoor? (slot.getCenterY() / 10) + offset : (slot.getCenterY() / 10) - offset;
             //we overlopen eerst alle richtingen NaarVoor wanneer deze op zen einde komt en er geen plaats meer is van richting veranderen naar achter
-            // index terug op 1 zetten omdat de indexen ervoor al gecontroleerd waren ervoor:
-            if (grondSlots.get((slot.getCenterY() / 10) + index) == null) {
+            // index terug op 1 zetten omdat de indexen ervoor al gecontroleerd waren
+            if (grondSlots.get(locatie) == null) {
                 //Grootte resetten en richting omdraaien
-                index = 1;
+                offset = 1;
                 richting = Richting.NaarAchter;
                 continue;
             }
 
-            int GetNewSlot = (slot.getCenterY() / 10) + index;
-            Set<Slot> ondersteRij = new HashSet<>(grondSlots.get(GetNewSlot).values());
-            newSlot = GeneralMeasures.ZoekLeegSlot(ondersteRij);
+            Set<Slot> ondersteRij = new HashSet<>(grondSlots.get(locatie).values());
+            newSlot = GeneralMeasures.zoekLeegSlot(ondersteRij);
 
-            if(newSlot != null)
-            {
+            if(newSlot != null){
                 newSlotFound = true;
             }
             //telkens één slot verder gaan
-            index += 1;
-        }while(newSlotFound == false);
+            offset += 1;
+        }while(!newSlotFound);
         // vanaf er een nieuw vrij slot gevonden is deze functie verlaten
 
         //verplaatsen

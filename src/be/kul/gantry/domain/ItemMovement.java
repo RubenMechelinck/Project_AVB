@@ -24,15 +24,14 @@ public class ItemMovement {
         yDuration = Math.abs((gantry.getY()- y_destination)/gantry.getYSpeed());
 
         //X tijd en y tijd vergelijken met elkaar daar de grootste van nemen om dat je wacht tot de traagste beweging klaar is
-        if(xDuration <= yDuration)
-        {
+        if(xDuration <= yDuration) {
             xyDuration = yDuration;
         }
-        else
-        {
+        else {
             xyDuration = xDuration;
         }
 
+        //x en y kunnen tegelijk bewegen, z niet
         this.time = gantry.getTime() + additionalTime + xyDuration;
         this.x_destination = x_destination;
         this.y_destination = y_destination;
